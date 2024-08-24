@@ -14,3 +14,5 @@ allow hal_power_default sysfs_trusty:file rw_file_perms;
 set_prop(hal_power_default, vendor_camera_prop)
 set_prop(hal_power_default, vendor_camera_debug_prop)
 set_prop(hal_power_default, vendor_camera_fatp_prop)
+
+allow hal_power_default sysfs:file rw_file_perms;
