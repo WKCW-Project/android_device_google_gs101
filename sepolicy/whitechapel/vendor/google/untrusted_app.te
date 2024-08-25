@@ -1,0 +1,6 @@
+#allow untrusted_app proc_version:file { read };
+allow untrusted_app proc_max_map_count:file { read open };
+allow untrusted_app cache_file:lnk_file { read };
+#allow untrusted_app cgroup:file { read };
+#allow untrusted_app serialno_prop:file { read };
+#allow untrusted_app mnt_sdcard_file:lnk_file { read };

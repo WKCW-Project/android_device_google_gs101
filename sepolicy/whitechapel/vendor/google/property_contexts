@@ -96,3 +96,6 @@ ro.vendor.trusty.storage.fs_ready               u:object_r:vendor_trusty_storage
 
 # Mali GPU driver configuration and debug options
 vendor.mali.                                    u:object_r:vendor_arm_runtime_option_prop:s0 prefix
+
+# HWC
+vendor.display.vds_allow_hwc                    u:object_r:vendor_hwc_prop:s0

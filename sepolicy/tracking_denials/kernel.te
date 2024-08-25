@@ -1,1 +1,2 @@
 allow kernel kernel:capability { net_bind_service };
+allow kernel vendor_charger_debugfs:dir { search };

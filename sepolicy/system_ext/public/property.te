@@ -4,6 +4,9 @@ system_vendor_config_prop(fingerprint_ghbm_prop)
 # eSIM properties
 system_vendor_config_prop(esim_modem_prop)
 
+# ShannonIms properties
+system_public_prop(shannon_ims_service_prop)
+
 # Telephony
 system_public_prop(telephony_ril_prop)
 
