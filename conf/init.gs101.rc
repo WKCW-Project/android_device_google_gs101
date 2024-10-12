@@ -1,10 +1,11 @@
 import /vendor/etc/init/hw/init.gs101.usb.rc
 import android.hardware.drm@1.2-service.widevine.rc
 import init.exynos.sensorhub.rc
-import /vendor/etc/init/hw/init.aoc.rc
 
 on early-init
     mount_all /vendor/etc/fstab.persist --early
+    write /proc/sys/kernel/sched_pelt_multiplier 1
+    write /sys/kernel/mm/lru_gen/enabled y
 
 on init
     # CPU0 cannot be offline
@@ -13,11 +14,10 @@ on init
     # Set teo as cpu idle governor
     write /sys/devices/system/cpu/cpuidle/current_governor teo
     # Disable util-awareness
-    write /proc/vendor_sched/teo_util_threshold "1024 1024 1024"
+    write /proc/vendor_sched/teo_util_threshold "2 1024 1024"
 
     # Boot time fs tuning
-    write /sys/block/sda/queue/scheduler bfq
-    write /sys/block/sda/queue/iosched/slice_idle 0
+    write /sys/block/sda/queue/scheduler mq-deadline
 
     chown system system /proc/vendor_sched/groups/bg/set_task_group
     chown system system /proc/vendor_sched/groups/cam/set_task_group
@@ -59,14 +59,6 @@ on init
     chown system system /sys/devices/system/cpu/cpufreq/policy6/sched_pixel/spc_threshold
     chown system system /sys/devices/system/cpu/cpufreq/policy6/sched_pixel/limit_frequency
     chown system system /sys/devices/system/cpu/cpufreq/policy6/sched_pixel/pmu_limit_enable
-    chown system system /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu0_memlat@17000010/memlat_cpuidle_state_aware
-    chown system system /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu1_memlat@17000010/memlat_cpuidle_state_aware
-    chown system system /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu2_memlat@17000010/memlat_cpuidle_state_aware
-    chown system system /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu3_memlat@17000010/memlat_cpuidle_state_aware
-    chown system system /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu4_memlat@17000010/memlat_cpuidle_state_aware
-    chown system system /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu5_memlat@17000010/memlat_cpuidle_state_aware
-    chown system system /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu6_memlat@17000010/memlat_cpuidle_state_aware
-    chown system system /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu7_memlat@17000010/memlat_cpuidle_state_aware
 
     chmod 0220 /proc/vendor_sched/groups/bg/set_task_group
     chmod 0220 /proc/vendor_sched/groups/cam/set_task_group
@@ -94,14 +86,20 @@ on init
     chmod 0220 /proc/vendor_sched/groups/ota/set_proc_group
     chmod 0220 /proc/vendor_sched/prefer_idle_set
     chmod 0220 /proc/vendor_sched/prefer_idle_clear
-    chmod 0220 /proc/vendor_sched/pmu_poll_enable
+    chmod 0660 /proc/vendor_sched/pmu_poll_enable
     chmod 0220 /proc/vendor_sched/pmu_poll_time
 
-    start vendor.keymaster-3-0
+    start vendor.keymaster-4-0
 
     # ZRAM setup
     write /sys/block/zram0/comp_algorithm lz77eh
     write /proc/sys/vm/page-cluster 0
+
+    # adjust PCP high level
+    write /proc/sys/vm/percpu_pagelist_high_fraction 430
+
+    # disable proactive compaction
+    write /proc/sys/vm/compaction_proactiveness 0
 
     # Some user code relies on ro.boot.hardware.revision
     setprop ro.boot.hardware.revision ${ro.revision}
@@ -117,7 +115,7 @@ on init
     symlink /data/app /factory
 
     # Apply network parameters for high data performance.
-    write /proc/sys/net/core/rmem_default 327680
+    write /proc/sys/net/core/rmem_default 1310720
     write /proc/sys/net/core/rmem_max 8388608
     write /proc/sys/net/core/wmem_default 327680
     write /proc/sys/net/core/wmem_max 8388608
@@ -147,13 +145,28 @@ on init
     mkdir /dev/socket/pdx/system/vr/pose 0775 system system
     mkdir /dev/socket/pdx/system/vr/sensors 0775 system system
 
-    # Boot time 183626384
-    write /proc/vendor_sched/groups/ta/uclamp_min 201
+    # Boot time tuning
+    # Set uclamp_min to capacity of little core + 1 to avoid little core
+    write /proc/vendor_sched/groups/ta/uclamp_min 190
     write /proc/vendor_sched/groups/ta/prefer_idle 1
-    write /proc/vendor_sched/groups/fg/uclamp_min 201
+    write /proc/vendor_sched/groups/fg/uclamp_min 190
     write /proc/vendor_sched/groups/fg/prefer_idle 1
-    write /proc/vendor_sched/groups/sys/uclamp_min 201
+    write /proc/vendor_sched/groups/sys/uclamp_min 190
     write /proc/vendor_sched/groups/sys/prefer_idle 1
+
+    write /proc/vendor_sched/groups/bg/rampup_multiplier 0
+    write /proc/vendor_sched/groups/cam/rampup_multiplier 1
+    write /proc/vendor_sched/groups/cam_power/rampup_multiplier 1
+    write /proc/vendor_sched/groups/dex2oat/rampup_multiplier 0
+    write /proc/vendor_sched/groups/fg/rampup_multiplier 0
+    write /proc/vendor_sched/groups/nnapi/rampup_multiplier 0
+    write /proc/vendor_sched/groups/ota/rampup_multiplier 0
+    write /proc/vendor_sched/groups/rt/rampup_multiplier 0
+    write /proc/vendor_sched/groups/sf/rampup_multiplier 1
+    write /proc/vendor_sched/groups/sys/rampup_multiplier 0
+    write /proc/vendor_sched/groups/sys_bg/rampup_multiplier 0
+    write /proc/vendor_sched/groups/ta/rampup_multiplier 1
+    write /proc/vendor_sched/adpf_rampup_multiplier 2
 
     # governor setting
     write /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor sched_pixel
@@ -166,16 +179,6 @@ on init
     write /sys/devices/system/cpu/cpu6/cpufreq/scaling_governor sched_pixel
     write /sys/devices/system/cpu/cpu6/cpufreq/sched_pixel/up_rate_limit_us 500
     write /sys/devices/system/cpu/cpu6/cpufreq/sched_pixel/down_rate_limit_us 20000
-
-    # memlat cpuidle awareness setting
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu0_memlat@17000010/memlat_cpuidle_state_aware 2
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu1_memlat@17000010/memlat_cpuidle_state_aware 2
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu2_memlat@17000010/memlat_cpuidle_state_aware 2
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu3_memlat@17000010/memlat_cpuidle_state_aware 2
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu4_memlat@17000010/memlat_cpuidle_state_aware 2
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu5_memlat@17000010/memlat_cpuidle_state_aware 2
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu6_memlat@17000010/memlat_cpuidle_state_aware 2
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu7_memlat@17000010/memlat_cpuidle_state_aware 2
 
     # RT uclamp setting
     write /proc/sys/kernel/sched_util_clamp_min_rt_default 0
@@ -214,27 +217,6 @@ on init
     chmod 0664 /dev/nanohub_comms
     chown system system /dev/nanohub
     chown system system /dev/nanohub_comms
-
-    # logbuffer
-    chown system system /dev/logbuffer_maxfg
-    chown system system /dev/logbuffer_maxfg_base
-    chown system system /dev/logbuffer_maxfg_flip
-    chown system system /dev/logbuffer_maxfg_monitor
-    chown system system /dev/logbuffer_maxfg_base_monitor
-    chown system system /dev/logbuffer_maxfg_flip_monitor
-    chown system system /dev/logbuffer_maxq
-    chown system system /dev/logbuffer_google,cpm
-    chown system system /dev/logbuffer_rtx
-    chown system system /dev/logbuffer_ssoc
-    chown system system /dev/logbuffer_ttf
-    chown system system /dev/logbuffer_tcpm
-    chown system system /dev/logbuffer_usbpd
-    chown system system /dev/logbuffer_pogo_transport
-    chown system system /dev/logbuffer_wireless
-    chown system system /dev/logbuffer_pca9468
-    chown system system /dev/logbuffer_cpm
-    chown system system /dev/logbuffer_bd
-    chown system system /dev/logbuffer_cpif
 
     # Dump maxfg
     chown system system /sys/class/power_supply/maxfg/m5_model_state
@@ -320,30 +302,15 @@ on init
     chown system system /sys/devices/platform/google,charger/dd_state
     chown system system /sys/devices/platform/google,charger/dd_settings
 
+    # Battery temperature filter
+    chown system system /sys/class/power_supply/battery/temp_filter_enable
+
     # Power Stats HAL
     chown system system /dev/bbd_pwrstat
 
     # Add a boost for NNAPI HAL
     write /proc/vendor_sched/groups/nnapi/prefer_idle 0
     write /proc/vendor_sched/groups/nnapi/uclamp_min 512
-
-    # Add memlat governor settings
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu0_memlat@17000010/polling_interval 10
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu1_memlat@17000010/polling_interval 10
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu2_memlat@17000010/polling_interval 10
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu3_memlat@17000010/polling_interval 10
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu4_memlat@17000010/polling_interval 10
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu5_memlat@17000010/polling_interval 10
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu6_memlat@17000010/polling_interval 10
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu7_memlat@17000010/polling_interval 10
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu0_memlat@17000010/mem_latency/ratio_ceil 400
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu1_memlat@17000010/mem_latency/ratio_ceil 400
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu2_memlat@17000010/mem_latency/ratio_ceil 400
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu3_memlat@17000010/mem_latency/ratio_ceil 400
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu4_memlat@17000010/mem_latency/ratio_ceil 2700
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu5_memlat@17000010/mem_latency/ratio_ceil 2700
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu6_memlat@17000010/mem_latency/ratio_ceil 3200
-    write /sys/class/devfreq/gs_memlat_devfreq:devfreq_mif_cpu7_memlat@17000010/mem_latency/ratio_ceil 3200
 
     # Set boost_adpf_prio, -1 by default
     write /proc/vendor_sched/boost_adpf_prio ${persist.device_config.vendor_system_native_boot.boost_adpf_prio:--1}
@@ -449,7 +416,32 @@ on post-fs-data
 on zygote-start
     # For PixelLogger configuration file.
     chmod 0771 /data/vendor/wifi
+    write /proc/vendor_sched/groups/ta/uclamp_min 1
+    write /proc/vendor_sched/groups/fg/uclamp_min 0
     write /proc/vendor_sched/groups/sys/uclamp_min 0
+    write /proc/vendor_sched/groups/ta/preferred_idle_mask_low 0x3f
+    write /proc/vendor_sched/groups/ta/preferred_idle_mask_mid 0xf0
+    write /proc/vendor_sched/groups/ta/preferred_idle_mask_high 0xf0
+    write /proc/vendor_sched/groups/ta/prefer_idle 1
+    write /proc/vendor_sched/groups/fg/preferred_idle_mask_low 0x3f
+    write /proc/vendor_sched/groups/fg/preferred_idle_mask_mid 0xf0
+    write /proc/vendor_sched/groups/fg/preferred_idle_mask_high 0xf0
+    write /proc/vendor_sched/groups/fg/prefer_idle 1
+    write /proc/vendor_sched/groups/sys/preferred_idle_mask_low 0x3f
+    write /proc/vendor_sched/groups/sys/preferred_idle_mask_mid 0xf0
+    write /proc/vendor_sched/groups/sys/preferred_idle_mask_high 0xf0
+    write /proc/vendor_sched/groups/sys/prefer_idle 1
+
+    write /proc/vendor_sched/groups/bg/ug 0
+    write /proc/vendor_sched/groups/sys_bg/ug 0
+    write /proc/vendor_sched/groups/ota/ug 0
+    write /proc/vendor_sched/groups/dex2oat/ug 1
+    write /proc/vendor_sched/groups/ta/ug 2
+    write /proc/vendor_sched/groups/fg/ug 2
+    write /proc/vendor_sched/groups/nnapi/ug 2
+    write /proc/vendor_sched/groups/rt/ug 2
+    write /proc/vendor_sched/groups/sf/ug 2
+    write /proc/vendor_sched/groups/sys/ug 2
 
 on post-fs-data
     # Create the directories used by the Wireless subsystem
@@ -490,6 +482,31 @@ on early-boot
     # Wait for insmod_sh to finish all common modules
     wait_for_prop vendor.common.modules.ready 1
 
+    # Dump Battery EEPROM history for pixelstats
+    chown system system /dev/battery_history
+    chmod 0644 /dev/battery_history
+
+    # Permission for logbuffer
+    chown system system /dev/logbuffer_maxfg
+    chown system system /dev/logbuffer_maxfg_base
+    chown system system /dev/logbuffer_maxfg_secondary
+    chown system system /dev/logbuffer_maxfg_monitor
+    chown system system /dev/logbuffer_maxfg_base_monitor
+    chown system system /dev/logbuffer_maxfg_secondary_monitor
+    chown system system /dev/logbuffer_maxq
+    chown system system /dev/logbuffer_rtx
+    chown system system /dev/logbuffer_ssoc
+    chown system system /dev/logbuffer_ttf
+    chown system system /dev/logbuffer_tcpm
+    chown system system /dev/logbuffer_usbpd
+    chown system system /dev/logbuffer_pogo_transport
+    chown system system /dev/logbuffer_wireless
+    chown system system /dev/logbuffer_pca9468
+    chown system system /dev/logbuffer_cpm
+    chown system system /dev/logbuffer_bd
+    chown system system /dev/logbuffer_dual_batt
+    chown system system /dev/logbuffer_cpif
+
 on boot
 
     # Allow to access debugfs for system:system
@@ -513,6 +530,10 @@ on boot
     chown audioserver system /sys/devices/platform/17c50000.abox/0.abox_debug/calliope_dram
     chown audioserver system /sys/devices/platform/17c50000.abox/0.abox_debug/calliope_iva
     chown audioserver system /sys/kernel/debug/abox/log-00
+
+    # Change sched lib affinity
+    write /proc/vendor_sched/sched_lib_name libunity.so
+    write /proc/vendor_sched/sched_lib_mask_out 0x1f0
 
 # Permission for USB SELECT
     chown system system /sys/class/android_usb/android0/enable
@@ -572,6 +593,9 @@ on fs
     mkdir /mnt/vendor/persist/audio 0770 system system
     chown media audio /mnt/vendor/persist/audio
 
+    # Start the display calibration helper
+    start display_calib
+
 # Permissions for ION
     chmod 0660 /sys/class/ion_cma/ion_video_ext/isolated
     chown system system /sys/class/ion_cma/ion_video_ext/isolated
@@ -586,7 +610,14 @@ on fs
     chown system system /sys/devices/platform/exynos-drm/primary-panel/gamma
     chown system system /sys/devices/platform/exynos-drm/primary-panel/min_vrefresh
     chown system system /sys/devices/platform/exynos-drm/primary-panel/idle_delay_ms
+    chown system system /sys/devices/platform/exynos-drm/primary-panel/panel_idle
     chown system system /sys/devices/platform/exynos-drm/primary-panel/panel_need_handle_idle_exit
+    chown system system /sys/devices/platform/exynos-drm/primary-panel/op_hz
+    chown system system /sys/devices/platform/exynos-drm/primary-panel/refresh_ctrl
+    chown system system /sys/devices/platform/exynos-drm/primary-panel/te2_rate_hz
+    chown system system /sys/devices/platform/exynos-drm/primary-panel/te2_option
+    chown system system /sys/devices/platform/exynos-drm/primary-panel/power_state
+    chown system system /sys/devices/platform/exynos-drm/primary-panel/frame_rate
     chown system system /sys/module/drm/parameters/vblankoffdelay
     chown system system /sys/module/drm/parameters/debug
     chown system system /sys/class/dqe0/atc/ambient_light
@@ -635,8 +666,8 @@ service abox /vendor/bin/main_abox 17c50000.abox
     group audioserver
     seclabel u:r:abox:s0
 
-# on eng builds, enable kgdb on the serial console
-on property:ro.build.type=eng
+# on userdebug and eng builds, enable kgdb on the serial console
+on property:ro.debuggable=1
     write /sys/module/kgdboc/parameters/kgdboc ttyFIQ1
     write /sys/module/fiq_debugger/parameters/kgdb_enable 1
 
@@ -682,8 +713,23 @@ on property:sys.boot_completed=1
     swapon_all /vendor/etc/fstab.${ro.board.platform}
     write /proc/sys/vm/swappiness 60
 
-    # Force empty CMA
-    write /sys/kernel/vendor_mm/cma/farawimg/force_empty 1
+    # Set kswapd affinity
+    write /sys/kernel/vendor_mm/kswapd_cpu_affinity 7f
+    write /sys/kernel/vendor_mm/pa_kill/cpu_affinity 7f
+
+    # Restore prefer idle
+    write /proc/vendor_sched/groups/ta/preferred_idle_mask_low 0xff
+    write /proc/vendor_sched/groups/ta/preferred_idle_mask_mid 0xff
+    write /proc/vendor_sched/groups/ta/preferred_idle_mask_high 0xff
+    write /proc/vendor_sched/groups/fg/preferred_idle_mask_low 0xff
+    write /proc/vendor_sched/groups/fg/preferred_idle_mask_mid 0xff
+    write /proc/vendor_sched/groups/fg/preferred_idle_mask_high 0xff
+    write /proc/vendor_sched/groups/sys/preferred_idle_mask_low 0xff
+    write /proc/vendor_sched/groups/sys/preferred_idle_mask_mid 0xff
+    write /proc/vendor_sched/groups/sys/preferred_idle_mask_high 0xff
+
+    # Adjust watermark level
+    write /proc/sys/vm/watermark_scale_factor 200
 
     # Back to default VM settings
     write /proc/sys/vm/dirty_expire_centisecs 3000
@@ -692,6 +738,12 @@ on property:sys.boot_completed=1
     # Reset DDR frequency
     write /sys/devices/platform/17000010.devfreq_mif/devfreq/17000010.devfreq_mif/exynos_data/cancel_boot_freq 1
     write /sys/devices/platform/17000020.devfreq_int/devfreq/17000020.devfreq_int/exynos_data/cancel_boot_freq 1
+
+    # Setup scheduler parameters
+    write /proc/vendor_sched/min_granularity_ns 1000000
+    write /proc/vendor_sched/latency_ns 8000000
+    write /proc/vendor_sched/max_load_balance_interval 4
+    write /proc/vendor_sched/enable_hrtick 1
 
     # Setup final cpuset
     write /dev/cpuset/top-app/cpus ${persist.device_config.vendor_system_native.top-app_cpuset:-0-7}
@@ -718,17 +770,22 @@ on property:sys.boot_completed=1
     write /proc/vendor_sched/ug_bg_group_throttle ${persist.device_config.vendor_system_native.ug_bg_group_throttle:-308}
 
     # Set uclamp.max for some groups, which could indicate cpu importance used in scheduling
-    write /proc/vendor_sched/groups/bg/uclamp_max 512
+    write /proc/vendor_sched/auto_uclamp_max "130 130 130 130 512 512 512 670"
+    write /proc/vendor_sched/groups/bg/uclamp_max 130
     write /proc/vendor_sched/groups/sys_bg/uclamp_max 512
     write /proc/vendor_sched/groups/ota/uclamp_max 512
-    write /proc/vendor_sched/groups/dex2oat/uclamp_max 615
+    write /proc/vendor_sched/groups/dex2oat/uclamp_max -2
+
+    write /proc/vendor_sched/uclamp_max_filter_divider 4
+    write /proc/vendor_sched/uclamp_max_filter_rt 16
+    write /proc/vendor_sched/uclamp_max_filter_enable 1
 
     # Set PMU freq limit parameters
     write /sys/devices/system/cpu/cpufreq/policy0/sched_pixel/lcpi_threshold 2
-    write /sys/devices/system/cpu/cpufreq/policy0/sched_pixel/spc_threshold 59
+    write /sys/devices/system/cpu/cpufreq/policy0/sched_pixel/spc_threshold 70
     write /sys/devices/system/cpu/cpufreq/policy0/sched_pixel/limit_frequency 1401000
     write /sys/devices/system/cpu/cpufreq/policy4/sched_pixel/lcpi_threshold 6
-    write /sys/devices/system/cpu/cpufreq/policy4/sched_pixel/spc_threshold 64
+    write /sys/devices/system/cpu/cpufreq/policy4/sched_pixel/spc_threshold 65
     write /sys/devices/system/cpu/cpufreq/policy4/sched_pixel/limit_frequency 1826000
     write /sys/devices/system/cpu/cpufreq/policy6/sched_pixel/lcpi_threshold 5
     write /sys/devices/system/cpu/cpufreq/policy6/sched_pixel/spc_threshold 69
@@ -740,6 +797,21 @@ on property:sys.boot_completed=1
     write /sys/devices/system/cpu/cpufreq/policy4/sched_pixel/pmu_limit_enable 1
     write /sys/devices/system/cpu/cpufreq/policy6/sched_pixel/pmu_limit_enable 1
     write /proc/vendor_sched/pmu_poll_enable 0
+
+    # Make devices on the critical path for suspend/resume asynchronous
+    write /sys/devices/platform/acpm_mfd_bus@17500000/i2c-20/20-001f/power/async "enabled"
+    write /sys/devices/platform/acpm_mfd_bus@17500000/i2c-20/power/async "enabled"
+    write /sys/devices/platform/acpm_mfd_bus@17500000/power/async "enabled"
+    write /sys/devices/platform/acpm_mfd_bus@17510000/i2c-21/21-002f/power/async "enabled"
+    write /sys/devices/platform/acpm_mfd_bus@17510000/i2c-21/power/async "enabled"
+    write /sys/devices/platform/acpm_mfd_bus@17510000/power/async "enabled"
+    write /sys/devices/platform/dbgdev-pd-hsi0/power/async "enabled"
+    write /sys/devices/platform/fixedregulator@0/regulator/regulator.2/power/async "enabled"
+    write /sys/devices/platform/fixedregulator@0/power/async "enabled"
+    write /sys/devices/platform/1e080000.clock-controller/power/async "enabled"
+    write /sys/devices/platform/10840000.pinctrl/power/async "enabled"
+    write /sys/devices/platform/17462080.pd-hsi0/power/async "enabled"
+    write /sys/devices/platform/14440000.pinctrl/power/async "enabled"
 
     # Setup cpu.shares to throttle background groups (bg ~ 5% sysbg ~ 5% dex2oat ~2.5%)
     write /dev/cpuctl/background/cpu.shares 1024
@@ -756,9 +828,28 @@ on property:sys.boot_completed=1
     # gvotables for dumpstate
     chown system system /sys/kernel/debug/gvotables
 
+    # Permission for wireless charging
+    chown system system /sys/class/power_supply/wireless/capacity
+    chown system system /sys/class/power_supply/wireless/device/rtx
+    chown system system /sys/class/power_supply/wireless/device/rxdata
+    chown system system /sys/class/power_supply/wireless/device/txdata
+    chown system system /sys/class/power_supply/wireless/device/rxlen
+    chown system system /sys/class/power_supply/wireless/device/txlen
+    chown system system /sys/class/power_supply/wireless/device/ccreset
+    chown system system /sys/class/power_supply/wireless/device/status
+    chown system system /sys/class/power_supply/wireless/device/version
+
     # AOC reset permission
     chown root system /sys/devices/platform/19000000.aoc/reset
     chmod 0220 /sys/devices/platform/19000000.aoc/reset
+
+    # AOC UDFPS clock compensation permission
+    chown system system /sys/devices/platform/19000000.aoc/control/udfps_set_clock_source
+    chmod 220 /sys/devices/platform/19000000.aoc/control/udfps_set_clock_source
+    chown system system /sys/devices/platform/19000000.aoc/control/udfps_get_osc_freq
+    chmod 440 /sys/devices/platform/19000000.aoc/control/udfps_get_osc_freq
+    chown system system /sys/devices/platform/19000000.aoc/control/udfps_get_disp_freq
+    chmod 440 /sys/devices/platform/19000000.aoc/control/udfps_get_disp_freq
 
     # write serialno to battery path for pairing
     write /sys/class/power_supply/battery/dev_sn ${ro.boot.serialno}
@@ -794,6 +885,13 @@ service init_display /vendor/bin/init.display.sh
     class main
     user root
     group root system
+    disabled
+    oneshot
+
+service display_calib /vendor/bin/init.display-calib.sh
+    class main
+    user system
+    group root system graphics
     disabled
     oneshot
 
@@ -847,27 +945,20 @@ on post-fs-data
 
 on property:vendor.thermal.link_ready=1
     # BCL
-    write /sys/devices/virtual/pmic/mitigation/clock_ratio/tpu_light_clk_ratio 0x80041c3
-    write /sys/devices/virtual/pmic/mitigation/clock_ratio/cpu2_light_clk_ratio 0xfff041c3
-    write /sys/devices/virtual/pmic/mitigation/clock_ratio/gpu_heavy_clk_ratio 0xfff04385
-    write /sys/devices/virtual/pmic/mitigation/clock_ratio/tpu_heavy_clk_ratio 0xfff041c1
-    write /sys/devices/virtual/pmic/mitigation/clock_ratio/cpu2_heavy_clk_ratio 0xfff041c0
-    write /dev/thermal/tz-by-name/smpl_gm/policy user_space
-    write /dev/thermal/tz-by-name/vdroop1/policy user_space
-    write /dev/thermal/tz-by-name/vdroop2/policy user_space
-    write /dev/thermal/tz-by-name/ocp_cpu1/policy user_space
-    write /dev/thermal/tz-by-name/ocp_cpu2/policy user_space
-    write /dev/thermal/tz-by-name/ocp_tpu/policy user_space
-    write /dev/thermal/tz-by-name/ocp_gpu/policy user_space
-    write /dev/thermal/tz-by-name/soft_ocp_cpu1/policy user_space
-    write /dev/thermal/tz-by-name/soft_ocp_cpu2/policy user_space
-    write /dev/thermal/tz-by-name/soft_ocp_tpu/policy user_space
-    write /dev/thermal/tz-by-name/soft_ocp_gpu/policy user_space
-    write /dev/thermal/tz-by-name/soc/policy user_space
-    write /dev/thermal/tz-by-name/batoilo/policy user_space
+    write /sys/devices/virtual/pmic/mitigation/clock_ratio/tpu_light_clk_ratio 0xfff041c1 #DFS
+    write /sys/devices/virtual/pmic/mitigation/clock_ratio/cpu1_heavy_clk_ratio 0xfff041c0 #DFS
+    write /sys/devices/virtual/pmic/mitigation/clock_ratio/cpu2_heavy_clk_ratio 0xfff041c0 #DFS
+    write /sys/devices/virtual/pmic/mitigation/clock_ratio/gpu_light_clk_ratio 0xfff041c3 #DFS
+    write /sys/devices/virtual/pmic/mitigation/clock_ratio/cpu2_light_clk_ratio 0xfff041c3 #OCP
+    write /sys/devices/virtual/pmic/mitigation/clock_ratio/gpu_heavy_clk_ratio 0x80041c3 #OCP
+    write /sys/devices/virtual/pmic/mitigation/clock_ratio/tpu_heavy_clk_ratio 0xfff041c1 #OCP
+    write /sys/devices/virtual/pmic/mitigation/triggered_lvl/uvlo1_lvl 3200
     write /sys/devices/virtual/pmic/mitigation/triggered_lvl/smpl_lvl 3100
+    write /sys/devices/virtual/pmic/mitigation/triggered_lvl/uvlo2_lvl 3000
+    write /sys/devices/virtual/pmic/mitigation/triggered_lvl/soft_ocp_cpu2_lvl 12000
     write /sys/devices/virtual/pmic/mitigation/clock_div/tpu_clk_div 0x1
     write /sys/devices/virtual/pmic/mitigation/clock_div/gpu_clk_div 0x1
+    write /sys/devices/virtual/pmic/mitigation/clock_div/cpu1_clk_div 0x381
     write /sys/devices/virtual/pmic/mitigation/clock_div/cpu2_clk_div 0x1
     chown system system /dev/thermal/tz-by-name/soc/mode
     chown system system /dev/thermal/tz-by-name/batoilo/trip_point_0_temp
@@ -896,14 +987,19 @@ on property:vendor.thermal.link_ready=1
     chown system system /dev/thermal/tz-by-name/soft_ocp_gpu/trip_point_0_hyst
     chown system system /dev/thermal/tz-by-name/soc/trip_point_0_temp
     chown system system /dev/thermal/tz-by-name/soc/trip_point_0_hyst
+    chown system system /dev/thermal/tz-by-name/batoilo/trip_point_0_temp
+    chown system system /dev/thermal/tz-by-name/batoilo/trip_point_0_hyst
     # Thermal
     chown system system /dev/thermal/tz-by-name/quiet_therm/trip_point_0_temp
     chown system system /dev/thermal/tz-by-name/quiet_therm/trip_point_0_hyst
     chown system system /dev/thermal/tz-by-name/neutral_therm/trip_point_0_temp
     chown system system /dev/thermal/tz-by-name/neutral_therm/trip_point_0_hyst
+    chown system system /dev/thermal/tz-by-name/usb_pwr_therm/trip_point_0_temp
+    chown system system /dev/thermal/tz-by-name/usb_pwr_therm/trip_point_0_hyst
     chown system system /dev/thermal/tz-by-name/usb_pwr_therm2/trip_point_0_temp
     chown system system /dev/thermal/tz-by-name/usb_pwr_therm2/trip_point_0_hyst
     chown system system /dev/thermal/tz-by-name/usb_pwr_therm2/emul_temp
+    chown system system /dev/thermal/cdev-by-name/MIF/user_vote
     chmod 664 /dev/thermal/cdev-by-name/thermal-cpufreq-0/user_vote
     chown system system /dev/thermal/cdev-by-name/thermal-cpufreq-0/user_vote
     chmod 664 /dev/thermal/cdev-by-name/thermal-cpufreq-1/user_vote
@@ -920,13 +1016,12 @@ on property:vendor.thermal.link_ready=1
     chown system system /dev/thermal/cdev-by-name/dc_icl/cur_state
     chmod 664 /dev/thermal/cdev-by-name/wlc_fcc/cur_state
     chown system system /dev/thermal/cdev-by-name/wlc_fcc/cur_state
+    chmod 664 /dev/thermal/cdev-by-name/chg_mdis/cur_state
+    chown system system /dev/thermal/cdev-by-name/chg_mdis/cur_state
     chmod 664 /dev/thermal/cdev-by-name/usbc-port/cur_state
     chown system system /dev/thermal/cdev-by-name/usbc-port/cur_state
 
 on charger
-    write /proc/vendor_sched/groups/sys/uclamp_min 0
-    write /proc/vendor_sched/groups/sys/prefer_idle 0
-
     # Use charger thermal config
     setprop vendor.thermal.config "thermal_info_config_charge.json"
 
